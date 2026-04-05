@@ -6,7 +6,7 @@ from datasets import load_dataset, load_from_disk
 from tqdm import tqdm
 from vllm import LLM, SamplingParams
 
-from cs336_alignment.drgrpo_grader import question_only_reward_fn
+from student.drgrpo_grader import question_only_reward_fn
 
 
 def load_prompt(name: str = "intellect") -> str:
@@ -14,18 +14,63 @@ def load_prompt(name: str = "intellect") -> str:
     return path.read_text()
 
 
-def evaluate(llm, prompts, ground_truths):
-    """Run evaluation and return accuracy."""
+def evaluate(llm, prompts, ground_truths, log_file=None):
+    """Run evaluation and return accuracy.
+
+    Changes from original:
+    - Added `log_file` param: if given, writes each example's output + rewards to that file
+      so we can inspect raw model generations for the writeup analysis.
+    - Now tracks 3 reward categories instead of just summing correct:
+        (1) format=1, answer=1  -> model got format right AND correct answer
+        (2) format=1, answer=0  -> model used \\boxed{} but wrong answer
+        (3) format=0, answer=0  -> model never produced \\boxed{} at all
+    - Prints category counts after grading.
+    """
     params = SamplingParams(temperature=0.0, max_tokens=2048)
     outputs = llm.generate(prompts, params)
 
-    correct = 0
+    # counters for the 3 categories from the assignment
+    counts = {"fmt1_ans1": 0, "fmt1_ans0": 0, "fmt0_ans0": 0}
+
+    # collect log lines if we need to write them out
+    log_lines = []
+
     for i, output in enumerate(tqdm(outputs, desc="Grading")):
         text = output.outputs[0].text
         reward = question_only_reward_fn(text, ground_truths[i])
-        correct += reward["reward"]
 
-    return correct / len(outputs)
+        fmt = reward["format_reward"]
+        ans = reward["answer_reward"]
+
+        # bucket into one of the 3 categories
+        if fmt == 1 and ans == 1:
+            counts["fmt1_ans1"] += 1
+        elif fmt == 1 and ans == 0:
+            counts["fmt1_ans0"] += 1
+        else:
+            counts["fmt0_ans0"] += 1
+
+        # build a log entry for this example so we can read it later
+        log_lines.append(
+            f"=== Example {i} | format_reward={fmt} | answer_reward={ans} ===\n"
+            f"GT : {ground_truths[i]}\n"
+            f"OUT: {text}\n"
+        )
+
+    # write all entries to disk if a path was given
+    if log_file:
+        with open(log_file, "w") as f:
+            f.write("\n".join(log_lines))
+        print(f"Outputs written to {log_file}")
+
+    # print the 3-way breakdown required by the assignment
+    total = len(outputs)
+    print(f"\nCategory breakdown (n={total}):")
+    print(f"  (1) format=1, answer=1 (correct)        : {counts['fmt1_ans1']}")
+    print(f"  (2) format=1, answer=0 (boxed but wrong) : {counts['fmt1_ans0']}")
+    print(f"  (3) format=0, answer=0 (no \\boxed found) : {counts['fmt0_ans0']}")
+
+    return counts["fmt1_ans1"] / total
 
 
 def main():
@@ -74,7 +119,8 @@ def main():
     gts = [ex["answer"] for ex in math_ds]
 
     print(f"[Sample] {prompts[0][:200]}...")
-    acc = evaluate(llm, prompts, gts)
+    # pass log_file so every model output is saved for manual inspection
+    acc = evaluate(llm, prompts, gts, log_file="math_outputs.log")
     print(f"MATH Accuracy: {acc:.4f}")
 
 
