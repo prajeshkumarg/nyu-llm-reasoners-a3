@@ -65,7 +65,7 @@ def main():
     parser.add_argument("--vllm-device", default="cuda:1")
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.85)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--max-seq-len", type=int, default=512)
+    parser.add_argument("--max-seq-len", type=int, default=2048)
     args = parser.parse_args()
 
     # ── wandb ──────────────────────────────────────────────────────────────
