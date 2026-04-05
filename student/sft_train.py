@@ -65,6 +65,7 @@ def main():
     parser.add_argument("--vllm-device", default="cuda:1")
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.85)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--max-seq-len", type=int, default=512)
     args = parser.parse_args()
 
     # ── wandb ──────────────────────────────────────────────────────────────
@@ -81,6 +82,7 @@ def main():
     model = AutoModelForCausalLM.from_pretrained(
         args.model, torch_dtype=torch.bfloat16
     ).to(args.policy_device)
+    model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
     model.train()
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
@@ -123,9 +125,10 @@ def main():
             
 
             tokenized = tokenize_prompt_and_output(prompt_strs, output_strs, tokenizer)
-            input_ids     = tokenized["input_ids"].to(args.policy_device)
-            labels        = tokenized["labels"].to(args.policy_device)
-            response_mask = tokenized["response_mask"].to(args.policy_device)
+            T = args.max_seq_len
+            input_ids     = tokenized["input_ids"][:, :T].to(args.policy_device)
+            labels        = tokenized["labels"][:, :T].to(args.policy_device)
+            response_mask = tokenized["response_mask"][:, :T].to(args.policy_device)
 
             # microbatch loop (gradient accumulation)
             micro_size = max(1, len(batch) // args.grad_accum_steps)

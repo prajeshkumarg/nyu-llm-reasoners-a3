@@ -17,7 +17,7 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 cd /scratch/$USER/nyu-llm-reasoners-a3
 
-SIZES=(128 256 512 1024)
+SIZES=(128 256 512 1024 0)
 SIZE=${SIZES[$SLURM_ARRAY_TASK_ID]}
 
 if [ "$SIZE" -eq 0 ]; then
@@ -34,6 +34,7 @@ uv run python student/sft_train.py \
     --n-epochs 3 \
     --eval-every 50 \
     --max-eval-examples 200 \
+    --max-seq-len 512 \
     --policy-device cuda:0 \
     --vllm-device cuda:1 \
     --gpu-memory-utilization 0.6
