@@ -86,29 +86,32 @@ def tokenize_prompt_and_output(prompt_strs, output_strs, tokenizer):
     combined = [p + o for p, o in zip(prompt_tokens, output_tokens)]
     max_len = max(len(seq) for seq in combined)
 
-    pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else 0
+    pad_id = tokenizer.pad_token_id
+    if pad_id is None:
+        pad_id = tokenizer.eos_token_id
+    if pad_id is None:
+        pad_id = 0
 
-    # Pad to max_len using pad_id, THEN slice — so padding gets pad_id not 0
+
     padded = [seq + [pad_id] * (max_len - len(seq)) for seq in combined]
     combined_tensor = torch.tensor(padded, dtype=torch.long)
 
-    input_ids = combined_tensor[:, :-1]   # all but last token
-    labels = combined_tensor[:, 1:]       # all but first token
+    input_ids = combined_tensor[:, :-1]
+    labels    = combined_tensor[:, 1:]
 
     batch_size = len(combined)
-    seq_len = max_len - 1
+    seq_len    = max_len - 1
     response_mask = torch.zeros(batch_size, seq_len, dtype=torch.long)
 
     for i, (p_tokens, o_tokens) in enumerate(zip(prompt_tokens, output_tokens)):
         L = len(p_tokens) + len(o_tokens)
-        resp_start = len(p_tokens) - 1  # shift by 1 due to labels offset
-        resp_end = L - 1                # exclusive, last response token in labels
+        resp_start = len(p_tokens) - 1
+        resp_end   = L - 1
         if resp_start < seq_len:
             response_mask[i, resp_start:resp_end] = 1
 
     return {
-        "input_ids": input_ids,
-        "labels": labels,
+        "input_ids":     input_ids,
+        "labels":        labels,
         "response_mask": response_mask,
     }
-
