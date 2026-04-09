@@ -147,17 +147,18 @@ def masked_mean(
     mask: torch.Tensor,
     dim: int | None = None,
 ) -> torch.Tensor:
-    masked = tensor * mask
-
+    
     if dim is None:
-        total_sum   = masked.sum()
+        total_sum   = (tensor * mask).sum()
         total_count = mask.sum().clamp(min=1)
         return total_sum / total_count
 
     else:
-        sum_along_dim   = masked.sum(dim=dim)
-        count_along_dim = mask.sum(dim=dim).clamp(min=1)
-        return sum_along_dim / count_along_dim
+        sum_along_dim   = (tensor * mask).sum(dim=dim)
+        count_along_dim = mask.sum(dim=dim).float()
+        
+        result = sum_along_dim / count_along_dim
+        return result
 
 def grpo_microbatch_train_step(
     policy_log_probs: torch.Tensor,
