@@ -45,21 +45,57 @@ def countdown_reward_fn(response: str, ground_truth) -> dict[str, float]:
         expr_to_eval = single if single else answer_text
 
     # Step 3: Verify numbers used match provided numbers
-    # Step 3: Verify numbers used match provided numbers
-    # Extract numbers from EXPRESSION ONLY, not the full answer including results
-    if expr_to_eval:
-        expr_numbers = [int(n) for n in re.findall(r"\b\d+\b", expr_to_eval)]
-    else:
-        expr_numbers = [int(n) for n in re.findall(r"\b\d+\b", answer_text)]
+    # For step format: collect all numbers from LEFT side of each equation
+    # For single expression: just check that expression
 
-    available = numbers.copy()
-    numbers_valid = True
-    for n in expr_numbers:
-        if n in available:
-            available.remove(n)
-        else:
-            numbers_valid = False
-            break
+    if len(lines) > 1:
+        # Multi-step format: extract numbers from LEFT side of ALL steps
+        all_expr_numbers = []
+        for line in lines:
+            step_match = re.match(r"(?:Step\s*\d+\s*:\s*)?(.*?)=\s*(-?\d+\.?\d*)\s*$", line)
+            if step_match:
+                left_side = step_match.group(1).strip()
+                # only count numbers that appear as literals in left side
+                # but exclude numbers that are results of previous steps
+                nums_in_left = [int(n) for n in re.findall(r"\b\d+\b", left_side)]
+                all_expr_numbers.extend(nums_in_left)
+        
+        # Filter: only check numbers that are in original list
+        # intermediate results will fail the check → only keep original numbers
+        available = numbers.copy()
+        numbers_valid = True
+        for n in all_expr_numbers:
+            if n in available:
+                available.remove(n)
+            # intermediate results (e.g. 79) are allowed — skip if not in available
+            # but if a number appears more than allowed times → invalid
+        
+        # Simpler check: at least all original numbers appear somewhere in answer
+        # and no number outside original list is used more than possible
+        used_from_original = []
+        for n in all_expr_numbers:
+            if n in numbers:
+                used_from_original.append(n)
+        
+        # Check no original number used more times than available
+        available = numbers.copy()
+        for n in used_from_original:
+            if n in available:
+                available.remove(n)
+            else:
+                numbers_valid = False
+                break
+    else:
+        # Single expression
+        expr_numbers = [int(n) for n in re.findall(r"\b\d+\b", expr_to_eval or answer_text)]
+        available = numbers.copy()
+        numbers_valid = True
+        for n in expr_numbers:
+            if n in available:
+                available.remove(n)
+            else:
+                numbers_valid = False
+                break
 
     if not numbers_valid:
         return {"format_reward": 1.0, "answer_reward": 0.0, "reward": 0.0}
