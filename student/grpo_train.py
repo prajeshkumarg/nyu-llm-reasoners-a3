@@ -14,8 +14,8 @@ from student.grpo import (
     compute_group_normalized_rewards,
     grpo_microbatch_train_step,
     masked_mean,
+    countdown_reward_fn
 )
-from student.drgrpo_grader import question_only_reward_fn
 
 
 def load_prompt(name: str = "countdown") -> str:
@@ -75,7 +75,7 @@ def evaluate_on_countdown(llm, df_val, prompt_template, max_examples=200):
     ans_correct = 0
     for out, gt in zip(outputs, gts):
         text = out.outputs[0].text + "</answer>"
-        reward = question_only_reward_fn(text, gt)
+        reward = countdown_reward_fn(text, gt)
         correct += reward["reward"]
         fmt_correct += reward["format_reward"]
         ans_correct += reward["answer_reward"]
@@ -198,7 +198,7 @@ def main():
 
         # ── Line 6 & 7: compute rewards and advantages ─────────────────────
         advantages, raw_rewards, reward_metadata = compute_group_normalized_rewards(
-            reward_fn=question_only_reward_fn,
+            reward_fn=countdown_reward_fn,
             rollout_responses=rollout_responses,
             repeated_ground_truths=repeated_gts,
             group_size=args.group_size,

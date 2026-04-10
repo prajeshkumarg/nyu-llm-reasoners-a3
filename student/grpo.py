@@ -1,6 +1,78 @@
 import torch
 from typing import Callable, Literal
+import re
 
+import re
+
+def countdown_reward_fn(response: str, ground_truth) -> dict[str, float]:
+    """
+    Reward function for Countdown dataset.
+    ground_truth: dict with keys 'numbers' and 'target'
+    """
+    # Parse ground truth
+    if isinstance(ground_truth, str):
+        import ast
+        ground_truth = ast.literal_eval(ground_truth)
+
+    target  = int(ground_truth["target"])
+    numbers = [int(n) for n in ground_truth["numbers"]]
+
+    # Step 1: Format check
+    match = re.search(r"<answer>(.*?)</answer>", response, re.DOTALL)
+    if match is None:
+        return {"format_reward": 0.0, "answer_reward": 0.0, "reward": 0.0}
+
+    format_reward = 1.0
+    answer_text = match.group(1).strip()
+
+    # Step 2: Extract expression
+    lines = [l.strip() for l in answer_text.split("\n") if l.strip()]
+    expr_to_eval = None
+
+    for line in reversed(lines):
+        step_match = re.match(
+            r"(?:Step\s*\d+\s*:\s*)?(.*?)=\s*(-?\d+\.?\d*)\s*$", line
+        )
+        if step_match:
+            expr_to_eval = step_match.group(1).strip()
+            expected_result = float(step_match.group(2))
+            if abs(expected_result - target) < 1e-6:
+                break
+            expr_to_eval = None
+
+    if expr_to_eval is None:
+        single = re.sub(r"=.*$", "", answer_text.split("\n")[-1]).strip()
+        expr_to_eval = single if single else answer_text
+
+    # Step 3: Verify numbers used match provided numbers
+    used_numbers = [int(n) for n in re.findall(r"\b\d+\b", answer_text)]
+    available = numbers.copy()
+    numbers_valid = True
+    for n in used_numbers:
+        if n in available:
+            available.remove(n)
+        else:
+            numbers_valid = False
+            break
+
+    if not numbers_valid:
+        return {"format_reward": 1.0, "answer_reward": 0.0, "reward": 0.0}
+
+    # Step 4: Evaluate expression
+    try:
+        safe_expr = re.sub(r"[^0-9+\-*/().\s]", "", expr_to_eval)
+        if not safe_expr.strip():
+            return {"format_reward": 1.0, "answer_reward": 0.0, "reward": 0.0}
+        result = eval(safe_expr, {"__builtins__": {}}, {})
+        answer_reward = 1.0 if abs(float(result) - target) < 1e-6 else 0.0
+    except Exception:
+        answer_reward = 0.0
+
+    return {
+        "format_reward": format_reward,
+        "answer_reward": answer_reward,
+        "reward":        float(format_reward * answer_reward),
+    }
 def compute_group_normalized_rewards(
     reward_fn: Callable,
     rollout_responses: list[str],
