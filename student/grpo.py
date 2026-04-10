@@ -1,21 +1,68 @@
 import torch
 from typing import Callable, Literal
 import re
+import ast
+import json
 
-import re
+
+def _parse_countdown_ground_truth(ground_truth) -> tuple[list[int], int]:
+    """Parse countdown ground truth robustly from dict-like objects or strings."""
+    data = ground_truth
+
+    if isinstance(ground_truth, str):
+        text = ground_truth.strip()
+
+        # First try strict JSON, then Python literal format.
+        for parser in (json.loads, ast.literal_eval):
+            try:
+                parsed = parser(text)
+                if isinstance(parsed, dict):
+                    data = parsed
+                    break
+            except Exception:
+                continue
+        else:
+            # Fallback for strings containing wrappers like np.int64(...).
+            numbers_match = re.search(r"['\"]numbers['\"]\s*:\s*\[([^\]]+)\]", text)
+            if numbers_match is None:
+                numbers_match = re.search(
+                    r"['\"]numbers['\"]\s*:\s*array\s*\(\s*\[([^\]]+)\]", text
+                )
+            target_match = re.search(r"['\"]target['\"]\s*:\s*([^,}\]]+)", text)
+
+            if numbers_match is None or target_match is None:
+                raise ValueError(f"Could not parse countdown ground_truth: {ground_truth}")
+
+            numbers = [int(x) for x in re.findall(r"-?\d+", numbers_match.group(1))]
+            target_candidates = re.findall(r"-?\d+", target_match.group(1))
+            if not target_candidates:
+                raise ValueError(f"Could not parse target in ground_truth: {ground_truth}")
+            target = int(target_candidates[0])
+            return numbers, target
+
+    if not isinstance(data, dict):
+        raise ValueError(f"Unsupported countdown ground_truth type: {type(ground_truth)}")
+
+    numbers_raw = data.get("numbers")
+    target_raw = data.get("target")
+
+    if numbers_raw is None or target_raw is None:
+        raise ValueError(f"Missing keys in countdown ground_truth: {ground_truth}")
+
+    if isinstance(numbers_raw, str):
+        numbers = [int(x) for x in re.findall(r"-?\d+", numbers_raw)]
+    else:
+        numbers = [int(n) for n in numbers_raw]
+
+    target = int(target_raw)
+    return numbers, target
 
 def countdown_reward_fn(response: str, ground_truth) -> dict[str, float]:
     """
     Reward function for Countdown dataset.
     ground_truth: dict with keys 'numbers' and 'target'
     """
-    # Parse ground truth
-    if isinstance(ground_truth, str):
-        import ast
-        ground_truth = ast.literal_eval(ground_truth)
-
-    target  = int(ground_truth["target"])
-    numbers = [int(n) for n in ground_truth["numbers"]]
+    numbers, target = _parse_countdown_ground_truth(ground_truth)
 
     # Step 1: Format check
     match = re.search(r"<answer>(.*?)</answer>", response, re.DOTALL)
@@ -118,7 +165,7 @@ def countdown_reward_fn(response: str, ground_truth) -> dict[str, float]:
 def compute_group_normalized_rewards(
     reward_fn: Callable,
     rollout_responses: list[str],
-    repeated_ground_truths: list[str],
+    repeated_ground_truths: list,
     group_size: int,
     advantage_eps: float,
     normalize_by_std: bool,

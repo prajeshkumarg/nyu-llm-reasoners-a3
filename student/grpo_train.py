@@ -65,7 +65,7 @@ def evaluate_on_countdown(llm, df_val, prompt_template, max_examples=200):
     prompts, gts = [], []
     for _, row in df.iterrows():
         prompts.append(make_prompt(row["nums"], row["target"], prompt_template))
-        gts.append(str(row["reward_model"]["ground_truth"]))
+        gts.append(row["reward_model"]["ground_truth"])
 
     params = SamplingParams(temperature=0.0, max_tokens=1024, stop=["</answer>"])
     outputs = llm.generate(prompts, params)
@@ -179,7 +179,7 @@ def main():
         # repeat each prompt G times
         repeated_prompts = [p for p in prompts for _ in range(args.group_size)]
         repeated_gts = [
-            str(row["reward_model"]["ground_truth"])
+            row["reward_model"]["ground_truth"]
             for _, row in batch_df.iterrows()
             for _ in range(args.group_size)
         ]
