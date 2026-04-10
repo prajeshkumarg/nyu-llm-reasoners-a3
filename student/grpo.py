@@ -45,10 +45,16 @@ def countdown_reward_fn(response: str, ground_truth) -> dict[str, float]:
         expr_to_eval = single if single else answer_text
 
     # Step 3: Verify numbers used match provided numbers
-    used_numbers = [int(n) for n in re.findall(r"\b\d+\b", answer_text)]
+    # Step 3: Verify numbers used match provided numbers
+    # Extract numbers from EXPRESSION ONLY, not the full answer including results
+    if expr_to_eval:
+        expr_numbers = [int(n) for n in re.findall(r"\b\d+\b", expr_to_eval)]
+    else:
+        expr_numbers = [int(n) for n in re.findall(r"\b\d+\b", answer_text)]
+
     available = numbers.copy()
     numbers_valid = True
-    for n in used_numbers:
+    for n in expr_numbers:
         if n in available:
             available.remove(n)
         else:
