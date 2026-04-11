@@ -14,7 +14,7 @@ from student.grpo import (
     compute_group_normalized_rewards,
     grpo_microbatch_train_step,
     masked_mean,
-    countdown_reward_fn
+    countdown_answer_reward_fn as countdown_reward_fn,  # alias keeps rest of code unchanged
 )
 
 
@@ -65,7 +65,7 @@ def evaluate_on_countdown(llm, df_val, prompt_template, max_examples=200):
     prompts, gts = [], []
     for _, row in df.iterrows():
         prompts.append(make_prompt(row["nums"], row["target"], prompt_template))
-        gts.append(row["reward_model"]["ground_truth"])
+        gts.append(str(int(row["target"])))  
 
     params = SamplingParams(temperature=0.0, max_tokens=1024, stop=["</answer>"])
     outputs = llm.generate(prompts, params)
@@ -180,10 +180,11 @@ def main():
         # repeat each prompt G times
         repeated_prompts = [p for p in prompts for _ in range(args.group_size)]
         repeated_gts = [
-            row["reward_model"]["ground_truth"]
+            str(int(row["target"]))                      # ← new (just target number)
             for _, row in batch_df.iterrows()
             for _ in range(args.group_size)
         ]
+
 
         sampling_params = SamplingParams(
             temperature=args.sampling_temperature,

@@ -4,163 +4,80 @@ import re
 import ast
 import json
 
-
-def _parse_countdown_ground_truth(ground_truth) -> tuple[list[int], int]:
-    """Parse countdown ground truth robustly from dict-like objects or strings."""
-    data = ground_truth
-
-    if isinstance(ground_truth, str):
-        text = ground_truth.strip()
-
-        # First try strict JSON, then Python literal format.
-        for parser in (json.loads, ast.literal_eval):
-            try:
-                parsed = parser(text)
-                if isinstance(parsed, dict):
-                    data = parsed
-                    break
-            except Exception:
-                continue
-        else:
-            # Fallback for strings containing wrappers like np.int64(...).
-            numbers_match = re.search(r"['\"]numbers['\"]\s*:\s*\[([^\]]+)\]", text)
-            if numbers_match is None:
-                numbers_match = re.search(
-                    r"['\"]numbers['\"]\s*:\s*array\s*\(\s*\[([^\]]+)\]", text
-                )
-            target_match = re.search(r"['\"]target['\"]\s*:\s*([^,}\]]+)", text)
-
-            if numbers_match is None or target_match is None:
-                raise ValueError(f"Could not parse countdown ground_truth: {ground_truth}")
-
-            numbers = [int(x) for x in re.findall(r"-?\d+", numbers_match.group(1))]
-            target_candidates = re.findall(r"-?\d+", target_match.group(1))
-            if not target_candidates:
-                raise ValueError(f"Could not parse target in ground_truth: {ground_truth}")
-            target = int(target_candidates[0])
-            return numbers, target
-
-    if not isinstance(data, dict):
-        raise ValueError(f"Unsupported countdown ground_truth type: {type(ground_truth)}")
-
-    numbers_raw = data.get("numbers")
-    target_raw = data.get("target")
-
-    if numbers_raw is None or target_raw is None:
-        raise ValueError(f"Missing keys in countdown ground_truth: {ground_truth}")
-
-    if isinstance(numbers_raw, str):
-        numbers = [int(x) for x in re.findall(r"-?\d+", numbers_raw)]
-    else:
-        numbers = [int(n) for n in numbers_raw]
-
-    target = int(target_raw)
-    return numbers, target
-
-def countdown_reward_fn(response: str, ground_truth) -> dict[str, float]:
+def _extract_final_expression(response: str) -> tuple[str | None, str | None]:
     """
-    Reward function for Countdown dataset.
-    ground_truth: dict with keys 'numbers' and 'target'
+    Extract answer text and best expression from response.
+    Returns (answer_text, expression) or (None, None) if no answer tags.
     """
-    numbers, target = _parse_countdown_ground_truth(ground_truth)
+    # must have <answer> tags
+    tag_match = re.search(r"<answer>(.*?)</answer>", response, re.DOTALL | re.IGNORECASE)
+    if tag_match is None:
+        return None, None
 
-    # Step 1: Format check
-    match = re.search(r"<answer>(.*?)</answer>", response, re.DOTALL)
-    if match is None:
-        return {"format_reward": 0.0, "answer_reward": 0.0, "reward": 0.0}
-
-    format_reward = 1.0
-    answer_text = match.group(1).strip()
-
-    # Step 2: Extract expression
+    answer_text = tag_match.group(1).strip()
     lines = [l.strip() for l in answer_text.split("\n") if l.strip()]
-    expr_to_eval = None
 
+    # scan lines in reverse for equation matching target pattern
     for line in reversed(lines):
-        step_match = re.match(
+        eq_match = re.match(
             r"(?:Step\s*\d+\s*:\s*)?(.*?)=\s*(-?\d+\.?\d*)\s*$", line
         )
-        if step_match:
-            expr_to_eval = step_match.group(1).strip()
-            expected_result = float(step_match.group(2))
-            if abs(expected_result - target) < 1e-6:
-                break
-            expr_to_eval = None
+        if eq_match:
+            return answer_text, eq_match.group(1).strip()
 
-    if expr_to_eval is None:
-        single = re.sub(r"=.*$", "", answer_text.split("\n")[-1]).strip()
-        expr_to_eval = single if single else answer_text
+    # fallback: strip any trailing "= x" from last line
+    last = re.sub(r"=.*$", "", lines[-1] if lines else answer_text).strip()
+    return answer_text, last or answer_text
 
-    # Step 3: Verify numbers used match provided numbers
-    # For step format: collect all numbers from LEFT side of each equation
-    # For single expression: just check that expression
 
-    if len(lines) > 1:
-        # Multi-step format: extract numbers from LEFT side of ALL steps
-        all_expr_numbers = []
-        for line in lines:
-            step_match = re.match(r"(?:Step\s*\d+\s*:\s*)?(.*?)=\s*(-?\d+\.?\d*)\s*$", line)
-            if step_match:
-                left_side = step_match.group(1).strip()
-                # only count numbers that appear as literals in left side
-                # but exclude numbers that are results of previous steps
-                nums_in_left = [int(n) for n in re.findall(r"\b\d+\b", left_side)]
-                all_expr_numbers.extend(nums_in_left)
-        
-        # Filter: only check numbers that are in original list
-        # intermediate results will fail the check → only keep original numbers
-        available = numbers.copy()
-        numbers_valid = True
-        for n in all_expr_numbers:
-            if n in available:
-                available.remove(n)
-            # intermediate results (e.g. 79) are allowed — skip if not in available
-            # but if a number appears more than allowed times → invalid
-        
-        # Simpler check: at least all original numbers appear somewhere in answer
-        # and no number outside original list is used more than possible
-        used_from_original = []
-        for n in all_expr_numbers:
-            if n in numbers:
-                used_from_original.append(n)
-        
-        # Check no original number used more times than available
-        available = numbers.copy()
-        for n in used_from_original:
-            if n in available:
-                available.remove(n)
-            else:
-                numbers_valid = False
-                break
-    else:
-        # Single expression
-        expr_numbers = [int(n) for n in re.findall(r"\b\d+\b", expr_to_eval or answer_text)]
-        available = numbers.copy()
-        numbers_valid = True
-        for n in expr_numbers:
-            if n in available:
-                available.remove(n)
-            else:
-                numbers_valid = False
-                break
+def _safe_eval(expr: str) -> float | None:
+    """Evaluate an arithmetic expression safely, returns None on failure."""
+    cleaned = re.sub(r"[^0-9+\-*/().\s]", "", expr)
+    if not cleaned.strip():
+        return None
+    try:
+        return float(eval(cleaned, {"__builtins__": {}}, {}))
+    except Exception:
+        return None
 
-    if not numbers_valid:
+
+def countdown_answer_reward_fn(response: str, ground_truth) -> dict[str, float]:
+    """
+    Reward function for Countdown arithmetic puzzles.
+    ground_truth: target number as int, float, or string.
+
+    Returns dict with format_reward, answer_reward, reward.
+    reward = 1 iff response has <answer> tags AND expression evaluates to target.
+    """
+    # parse ground truth target robustly (handles numpy scalars too)
+    try:
+        target = float(int(ground_truth))
+    except (TypeError, ValueError):
+        try:
+            target = float(ground_truth)
+        except (TypeError, ValueError):
+            return {"format_reward": 0.0, "answer_reward": 0.0, "reward": 0.0}
+
+    # extract answer block and expression
+    answer_text, expr = _extract_final_expression(response)
+
+    # no answer tags → format failure
+    if answer_text is None:
+        return {"format_reward": 0.0, "answer_reward": 0.0, "reward": 0.0}
+
+    # has tags but expression fails to evaluate
+    result = _safe_eval(expr) if expr else None
+    if result is None:
         return {"format_reward": 1.0, "answer_reward": 0.0, "reward": 0.0}
 
-    # Step 4: Evaluate expression
-    try:
-        safe_expr = re.sub(r"[^0-9+\-*/().\s]", "", expr_to_eval)
-        if not safe_expr.strip():
-            return {"format_reward": 1.0, "answer_reward": 0.0, "reward": 0.0}
-        result = eval(safe_expr, {"__builtins__": {}}, {})
-        answer_reward = 1.0 if abs(float(result) - target) < 1e-6 else 0.0
-    except Exception:
-        answer_reward = 0.0
+    # check if result matches target
+    is_correct    = abs(result - target) < 1e-6
+    answer_reward = 1.0 if is_correct else 0.0
 
     return {
-        "format_reward": format_reward,
+        "format_reward": 1.0,
         "answer_reward": answer_reward,
-        "reward":        float(format_reward * answer_reward),
+        "reward":        answer_reward,
     }
 def compute_group_normalized_rewards(
     reward_fn: Callable,
