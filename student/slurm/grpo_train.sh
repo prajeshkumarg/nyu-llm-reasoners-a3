@@ -27,8 +27,8 @@ uv run python student/grpo_train.py \
     --sampling-temperature 0.7 \
     --sampling-min-tokens 4 \
     --sampling-max-tokens 1024 \
-    --train-batch-size 128 \
-    --grad-accum-steps 128 \
+    --train-batch-size 16 \
+    --grad-accum-steps 16 \
     --lr 1e-5 \
     --loss-type reinforce_with_baseline \
     --use-std-normalization \
