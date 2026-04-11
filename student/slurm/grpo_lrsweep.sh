@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=grpo_lr_sweep
 #SBATCH --account=csci_ga_3033_131-2026sp
-#SBATCH --partition=g4-standard-48        # ← new partition
-#SBATCH --gres=gpu:1                      # ← only 1 GPU needed
+#SBATCH --partition=g4-standard-48
+#SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=80GB
 #SBATCH --time=04:00:00
@@ -39,5 +39,5 @@ uv run python student/grpo_train.py \
     --eval-every 10 \
     --max-eval-examples 200 \
     --policy-device cuda:0 \
-    --vllm-device cuda:0 \        # ← same GPU as policy
-    --gpu-memory-utilization 0.4  # ← lower since sharing one GPU
+    --vllm-device cuda:1 \
+    --gpu-memory-utilization 0.8
