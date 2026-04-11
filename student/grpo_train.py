@@ -113,6 +113,7 @@ def main():
     parser.add_argument("--eval-every",          type=int,   default=10)
     parser.add_argument("--max-eval-examples",   type=int,   default=200)
     parser.add_argument("--seed",                type=int,   default=42)
+    parser.add_argument("--sampling-min-tokens", type=int, default=4)
     args = parser.parse_args()
 
     # ── sanity checks ──────────────────────────────────────────────────────
@@ -186,6 +187,7 @@ def main():
 
         sampling_params = SamplingParams(
             temperature=args.sampling_temperature,
+            min_tokens=args.sampling_min_tokens,   # ← add this
             max_tokens=args.sampling_max_tokens,
             stop=["</answer>"],
         )
@@ -321,6 +323,15 @@ def main():
                 "eval/answer_reward": val_metrics["answer_reward"],
                 "eval_step": eval_step,
             })
+            # ── log example rollouts for writeup ──────────────────────────
+            print(f"\n  Example rollouts at step {grpo_step+1}:")
+            for idx in range(min(3, len(rollout_responses))):
+                reward = countdown_reward_fn(
+                    rollout_responses[idx],
+                    repeated_gts[idx]
+                )
+                print(f"  [{idx}] reward={reward['reward']} | {rollout_responses[idx][:200]}")
+
             eval_step += 1
             model.train()
 
