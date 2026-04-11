@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=grpo_lr_sweep
 #SBATCH --account=csci_ga_3033_131-2026sp
-#SBATCH --partition=g4-standard-48
-#SBATCH --gres=gpu:1
+#SBATCH --partition=c24m170-a100-2
+#SBATCH --gres=gpu:2
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=80GB
 #SBATCH --time=04:00:00
