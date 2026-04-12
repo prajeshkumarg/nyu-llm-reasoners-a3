@@ -80,6 +80,9 @@ def main():
     parser.add_argument("--max-examples", type=int, default=500)
     parser.add_argument("--intellect-path", default="data/intellect_math_train_dev_test/test")
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.85)
+   
+    parser.add_argument("--math-log-file", default="math_outputs.log")
+
     args = parser.parse_args()
 
     prompt_template = load_prompt("intellect")
@@ -106,7 +109,7 @@ def main():
         gts.append(ex.get("ground_truth", ""))
 
     print(f"[Sample] {prompts[0][:200]}...")
-    acc = evaluate(llm, prompts, gts)
+    acc = evaluate(llm, prompts, gts, log_file=args.math_log_file)
     print(f"Intellect Accuracy: {acc:.4f}")
 
     # Evaluate on MATH
