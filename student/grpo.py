@@ -4,6 +4,17 @@ import re
 import ast
 import json
 
+def masked_normalize(
+    tensor: torch.Tensor,
+    mask: torch.Tensor,
+    normalize_constant: float,
+    dim: int | None = None,
+) -> torch.Tensor:
+    masked = tensor * mask
+    if dim is None:
+        return masked.sum() / normalize_constant
+    return masked.sum(dim=dim) / normalize_constant
+
 def _extract_final_expression(response: str) -> tuple[str | None, str | None]:
     """
     Extract answer text and best expression from response.
@@ -247,6 +258,8 @@ def grpo_microbatch_train_step(
     advantages: torch.Tensor | None = None,
     old_log_probs: torch.Tensor | None = None,
     cliprange: float | None = None,
+    length_normalization: str = "masked_mean",   # ← ADD
+    normalize_constant: float = 1024.0,
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
     per_token_loss, metadata = compute_policy_gradient_loss(
         policy_log_probs=policy_log_probs,
@@ -257,11 +270,19 @@ def grpo_microbatch_train_step(
         cliprange=cliprange,
     )
 
-    loss_per_example = masked_mean(
-        tensor=per_token_loss,
-        mask=response_mask,
-        dim=1,
-    )
+    if length_normalization == "masked_mean":
+        loss_per_example = masked_mean(
+            tensor=per_token_loss,
+            mask=response_mask,
+            dim=1,
+        )
+    else:
+        loss_per_example = masked_normalize(
+            tensor=per_token_loss,
+            mask=response_mask,
+            normalize_constant=normalize_constant,
+            dim=1,
+        )
 
     loss = loss_per_example.mean()
 

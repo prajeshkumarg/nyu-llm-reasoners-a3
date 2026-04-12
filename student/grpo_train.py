@@ -114,6 +114,10 @@ def main():
     parser.add_argument("--max-eval-examples",   type=int,   default=200)
     parser.add_argument("--seed",                type=int,   default=42)
     parser.add_argument("--sampling-min-tokens", type=int, default=4)
+    parser.add_argument("--length-normalization", 
+                        choices=["masked_mean", "masked_normalize"],
+                        default="masked_mean")
+    parser.add_argument("--normalize-constant", type=float, default=1024.0)
     args = parser.parse_args()
 
     # ── sanity checks ──────────────────────────────────────────────────────
@@ -125,7 +129,7 @@ def main():
     # ── wandb ──────────────────────────────────────────────────────────────
     wandb.init(
         project="llm-reasoners-a3-grpo",
-        name=f"grpo_{args.loss_type}_lr{args.lr}",
+        name=f"grpo_{args.loss_type}_lr{args.lr}_{args.length_normalization}",
         config=vars(args),
     )
     wandb.define_metric("train_step")
@@ -271,6 +275,8 @@ def main():
                 advantages=m_adv,
                 old_log_probs=m_old,
                 cliprange=args.cliprange,
+                length_normalization=args.length_normalization,
+                normalize_constant=args.normalize_constant,
             )
             total_loss += loss.item()
 
