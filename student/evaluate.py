@@ -81,7 +81,8 @@ def main():
     parser.add_argument("--intellect-path", default="data/intellect_math_train_dev_test/test")
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.85)
    
-    parser.add_argument("--math-log-file", default="math_outputs.log")
+    parser.add_argument("--math-log-file",     default="math_outputs.log")
+    parser.add_argument("--intellect-log-file", default="intellect_outputs.log")  # ← add this
 
     args = parser.parse_args()
 
@@ -109,7 +110,7 @@ def main():
         gts.append(ex.get("ground_truth", ""))
 
     print(f"[Sample] {prompts[0][:200]}...")
-    acc = evaluate(llm, prompts, gts, log_file=args.math_log_file)
+    acc = evaluate(llm, prompts, gts, log_file=args.intellect_log_file)
     print(f"Intellect Accuracy: {acc:.4f}")
 
     # Evaluate on MATH
@@ -123,7 +124,7 @@ def main():
 
     print(f"[Sample] {prompts[0][:200]}...")
     # pass log_file so every model output is saved for manual inspection
-    acc = evaluate(llm, prompts, gts, log_file="math_outputs.log")
+    acc = evaluate(llm, prompts, gts, log_file=args.math_log_file)
     print(f"MATH Accuracy: {acc:.4f}")
 
 

@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --job-name=sft_eval
 #SBATCH --account=csci_ga_3033_131-2026sp
-#SBATCH --partition=c12m85-a100-1
+#SBATCH --partition=g2-standard-12
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=40GB
+#SBATCH --mem=24GB
 #SBATCH --time=01:00:00
 #SBATCH --array=0-1
 #SBATCH --output=./logs/sft_eval_%A_%a.out
@@ -15,6 +15,8 @@ export HF_HOME=/scratch/$USER/hf_cache
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 cd /scratch/$USER/nyu-llm-reasoners-a3
+
+mkdir -p logs
 
 MODELS=(
     "/scratch/pg2973/sft_model_128"
@@ -34,4 +36,5 @@ uv run python student/evaluate.py \
     --intellect-path /scratch/pg2973/data-distrib/intellect_math/test \
     --gpu-memory-utilization 0.85 \
     --math-log-file logs/math_outputs_${NAME}.log \
+    --intellect-log-file logs/intellect_outputs_${NAME}.log \
     2>&1 | tee logs/eval_${NAME}.log
