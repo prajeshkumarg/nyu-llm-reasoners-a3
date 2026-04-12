@@ -19,12 +19,12 @@ cd /scratch/$USER/nyu-llm-reasoners-a3
 mkdir -p logs
 
 MODELS=(
-    "/scratch/pg2973/sft_model_128"
-    "/scratch/pg2973/sft_model_full"
+    "/scratch/pg2973/sft_model_512"
+    "/scratch/pg2973/sft_model_1024"
 )
 NAMES=(
-    "sft_128"
-    "sft_full"
+    "sft_512"
+    "sft_1024"
 )
 
 MODEL=${MODELS[$SLURM_ARRAY_TASK_ID]}
